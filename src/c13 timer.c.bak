@@ -1,0 +1,66 @@
+/*============================================================================
+ * Licencia:
+ * Autor:
+ * Fecha:
+ *===========================================================================*/
+
+/*==================[inlcusiones]============================================*/
+
+//#include "program.h"   // <= su propio archivo de cabecera (opcional)
+#include "sapi.h"        // <= Biblioteca sAPI
+
+//#include "c_i18n_es.h" // <= para traducir el codigo C al espa�ol (opcional)
+//#include "c_i18n_es.h" // <= para traducir la sAPI al espa�ol (opcional)
+
+/*==================[definiciones y macros]==================================*/
+#define     T_TMREXEC_MS    50
+
+/*==================[definiciones de datos internos]=========================*/
+
+CONSOLE_PRINT_ENABLE
+
+/*==================[definiciones de datos externos]=========================*/
+
+/*==================[declaraciones de funciones internas]====================*/
+
+bool_t miFuncionDeTimer( void );
+
+/*==================[declaraciones de funciones externas]====================*/
+
+/*==================[funcion principal]======================================*/
+
+// FUNCION PRINCIPAL, PUNTO DE ENTRADA AL PROGRAMA LUEGO DE ENCENDIDO O RESET.
+int main( void ){
+
+    // ---------- CONFIGURACIONES ------------------------------
+
+    // Inicializar y configurar la plataforma
+    boardConfig();
+
+    // Inicializar UART_USB como salida de consola
+    consolePrintConfigUart( UART_USB, 115200 );
+
+	// Ejecuta mi función cada 1 ms interrumpiendo lo que esté realizando el
+	// microcontrolador
+	tickConfig( T_TMREXEC_MS, miFuncionDeTimer );
+	// ---------- REPETIR POR SIEMPRE --------------------------
+ 	while( TRUE )
+   	{
+        
+    }
+ 
+	// NO DEBE LLEGAR NUNCA AQUI, debido a que a este programa se ejecuta
+	// directamenteno sobre un microcontroladore y no es llamado por ningun
+	// Sistema Operativo, como en el caso de un programa para PC.
+	return 0;
+}
+
+/*==================[definiciones de funciones internas]=====================*/
+bool_t miFuncionDeTimer( void ){
+	// Hacer algo en cada tick
+	gpioToggle( LED1 );
+	return TRUE;
+}
+/*==================[definiciones de funciones externas]=====================*/
+
+/*==================[fin del archivo]========================================*/

@@ -1,0 +1,225 @@
+/*============================================================================
+ * Licencia:
+ * Autor:
+ * Fecha:
+ *===========================================================================*/
+
+/*==================[inlcusiones]============================================*/
+
+//#include "program.h"   // <= su propio archivo de cabecera (opcional)
+#include "sapi.h"        // <= Biblioteca sAPI
+
+//#include "c_i18n_es.h" // <= para traducir el codigo C al espaï¿½ol (opcional)
+//#include "c_i18n_es.h" // <= para traducir la sAPI al espaï¿½ol (opcional)
+
+/*==================[definiciones y macros]==================================*/
+
+typedef enum{	DEASACTIVADA,	//Desactivada
+				ACTIVADA, 		//Activada
+				DISPARADA,  	//Disparada
+				CONFIGURANDO	//Configurando
+			} estadoMEF;
+
+#define T_SIRENA 	15			//Tiempo de sirena en segundos
+#define TO_INTERCH 	5000		//Tieme Out inter caracter en mSegs
+#define LONG_CLAVE 	4			//Longitud de la clave
+
+
+/*==================[definiciones de datos internos]=========================*/
+
+CONSOLE_PRINT_ENABLE
+estadoMEF  estadoActual;
+uint32_t tiempoSegs = 0;
+uint8_t clave[LONG_CLAVE]={'1','2','3','4'};	//Inicializa clave por defecto
+/*==================[definiciones de datos externos]=========================*/
+
+/*==================[declaraciones de funciones internas]====================*/
+void InicializarMEF(void);
+void ActualizarMEF(void);
+bool_t RecibeClave(uint8_t *buf, uint8_t largo ,uint32_t toEntreCaracteres);
+
+/*==================[declaraciones de funciones externas]====================*/
+
+/*==================[funcion principal]======================================*/
+
+// FUNCION PRINCIPAL, PUNTO DE ENTRADA AL PROGRAMA LUEGO DE ENCENDIDO O RESET.
+int main( void ){
+	int contDecimas;
+   // ---------- CONFIGURACIONES ------------------------------
+
+   // Inicializar y configurar la plataforma
+   boardConfig();
+
+   // Inicializar UART_USB como salida de consola
+   consolePrintConfigUart( UART_USB, 115200 );
+
+   InicializarMEF();
+
+   // ---------- REPETIR POR SIEMPRE --------------------------
+   while( TRUE )
+   {
+       ActualizarMEF();
+       delay(100);		//100mseg
+       if(++contDecimas >= 10) //Transcurre un segundo
+       {
+    	   tiempoSegs++;
+    	   contDecimas = 0;
+       }
+   }
+
+   // NO DEBE LLEGAR NUNCA AQUI, debido a que a este programa se ejecuta
+   // directamenteno sobre un microcontroladore y no es llamado por ningun
+   // Sistema Operativo, como en el caso de un programa para PC.
+   return 0;
+}
+
+/*==================[definiciones de funciones internas]=====================*/
+void InicializarMEF(void){
+   estadoActual = DEASACTIVADA;
+   tiempoSegs = 0;
+   consolePrintString("\r\nIngrese clave para activar: ");
+}
+
+void ActualizarMEF(void){
+	uint8_t dato,claveTemp[LONG_CLAVE],n,claveOk;
+
+    switch (estadoActual){
+        case DEASACTIVADA:
+        	if(uartReadByte( UART_USB, &dato )){				//Si recibe un dato
+        		if(dato == 'c' || dato == 'C'){					// y es C
+        			gpioWrite( LED3 , ON );
+        			estadoActual = CONFIGURANDO;				//  cambia de estado
+        			consolePrintString("\r\nIngrese nueva clave: ");
+        		}
+        		else if(dato >= '0' && dato <= '9'){	    	// Si comienza clave
+					claveTemp[0] = dato;						//  guarda primer caracter
+					if( RecibeClave ( claveTemp+1 , LONG_CLAVE-1 , TO_INTERCH)){	//Comienza arecibir el resto
+						claveOk = 1;
+						for(n=0; n<LONG_CLAVE; n++){//  compara la clave
+							if (clave[n] != claveTemp[n]){		//
+								claveOk = 0;
+								break;							//    Si hay diferenca termina for
+							}
+						}
+						if (claveOk){							//      si es igual cambia de estado
+							consolePrintString("\r\nAlarma Activada\r\n");
+							estadoActual = ACTIVADA;
+							gpioWrite( LED1 , ON );
+						}
+					}
+				}
+            }
+            break;
+
+
+        case ACTIVADA:
+        	if ( !gpioRead(TEC1) || !gpioRead(TEC2) || !gpioRead(TEC3) || !gpioRead(TEC4) ){//Si se activa sensor
+				gpioWrite( LED2 , ON );							//  prende sirena
+				tiempoSegs = 0;									//   reinicia contados de segundos
+				estadoActual = DISPARADA;						//    y cambia de estado
+				consolePrintString("\r\nAlarma Disparada\r\n");
+        	}
+        	else if(uartReadByte( UART_USB, &dato )){			//Si recibe un dato
+        		if(dato >= '0' && dato <= '9'){	    			// Si comienza clave
+					claveTemp[0] = dato;						//  guarda primer caracter
+					if( RecibeClave ( claveTemp+1 , LONG_CLAVE-1 , TO_INTERCH)){	//Comienza arecibir el resto
+						claveOk = 1;
+						for(n=0; n<LONG_CLAVE ; n++){						//  compara la clave
+							if (clave[n] != claveTemp[n]){		//
+								claveOk = 0;
+								break;							//    Si hay diferenca termina
+							}
+						}
+						if (claveOk){							//      si es igual cambia de estado
+							gpioWrite( LED1 , OFF );
+							consolePrintString("\r\nIngrese clave para activar: ");
+							estadoActual = DEASACTIVADA;			//      si es igual cambia de estado
+						}
+					}
+				}
+            }
+            break;
+
+
+        case DISPARADA:
+        	if (tiempoSegs > T_SIRENA){    						//Termina el tiempo
+				gpioWrite( LED2 , OFF );						//  apaga sirena
+				estadoActual = ACTIVADA;						//     y cambia de estado
+				consolePrintString("\r\nAlarma Activada\r\n");
+        	}
+        	else if(uartReadByte( UART_USB, &dato )){			//Si recibe un dato
+        		if(dato >= '0' && dato <= '9'){	    			// Si comienza clave
+					claveTemp[0] = dato;						//  guarda primer caracter
+					if( RecibeClave ( claveTemp+1 , LONG_CLAVE-1 , TO_INTERCH)){	//Comienza arecibir el resto
+						claveOk = 1;
+						for(n=0; n < LONG_CLAVE; n++){						//  compara la clave
+							if (clave[n] != claveTemp[n]){		//
+								claveOk = 0;
+								break;							//    Si hay diferenca termina
+							}
+						}
+						if (claveOk){							//      si es igual cambia de estado
+							gpioWrite( LED2 , OFF );				//   si es igual apaga sirena
+							gpioWrite( LED1 , OFF );				//
+							estadoActual = DEASACTIVADA;			//     y cambia de estado
+							consolePrintString("\r\nIngrese clave para activar: ");
+						}
+					}
+				}
+            }
+            break;
+
+
+        case CONFIGURANDO:
+			if( RecibeClave ( claveTemp , LONG_CLAVE , TO_INTERCH)){	//Si recibe OK
+				for(n=0; n<LONG_CLAVE; n++){						//  copia la clave
+					clave[n] = claveTemp[n];			//
+				}
+			}
+			estadoActual = DEASACTIVADA;
+			gpioWrite( LED3 , OFF );
+			consolePrintString("\r\nIngrese clave para activar: ");
+            break;
+
+        default:
+            //Si algo modificó la variable estadoActual
+            // a un estado no válido llevo la MEF a un
+            // lugar seguro, por ejemplo, la reinicio:
+            InicializarMEF();
+    }
+}
+
+/**
+ * @brief	Espera la recepcion de la clave con time out entre caracteres
+ * @param	*buf				: direccion de destino de la clave recibida
+ * @param	toEntreCaracteres	: tiempo de espera en mSeg entre caracteres
+ * @param	largo				: cantidad de caracteres a recibir
+ * @return	TRUE si se recibe correctamente, FALSE si hay TO
+ * @note
+ */
+bool_t RecibeClave(uint8_t *buf, uint8_t largo ,uint32_t toEntreCaracteres){
+	uint32_t contTO;
+	uint8_t dato;
+	int n;
+	bool_t valRetorno = TRUE;
+	for(n = 0; n < largo  ; n++ ){
+		contTO = toEntreCaracteres;
+		while (contTO-- > 0){					//Repite si no se agotó la t de Espera
+			if (uartReadByte( UART_USB, &dato))	//Si hay recepcion
+				break;							//  continua
+			delay(1);							//si no Demora 1 mSeg
+		}
+		if(contTO > 0){							//Si no hubo time out
+			*buf++ = dato;						//	guarda lo recibido y apunta al sig. lugar
+		}
+		else{									//Si hubo time out
+			valRetorno = FALSE;					//   lo indica
+			break;								//   y termina la receipcion de mas caracteres
+		}
+	}
+	return valRetorno;
+}
+
+/*==================[definiciones de funciones externas]=====================*/
+
+/*==================[fin del archivo]========================================*/
